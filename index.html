@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BookScan KR — 영문 소설 번역기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400&display=swap');
+
+  :root {
+    --ink: #1a1209;
+    --paper: #f5f0e8;
+    --cream: #ede7d9;
+    --rust: #b5451b;
+    --gold: #c9973a;
+    --sage: #5a7560;
+    --muted: #8a7e6e;
+    --shadow: rgba(26,18,9,0.12);
+    --radius: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'Noto Serif KR', serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity: 0.6;
+  }
+
+  #app { position: relative; z-index: 1; }
+
+  /* ── Header ── */
+  .header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 20px 24px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 4px 20px var(--shadow);
+  }
+
+  .header-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem; font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .header-title span { color: var(--gold); font-style: italic; }
+
+  .header-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+
+  /* ── Steps nav ── */
+  .steps-nav {
+    display: flex; background: var(--cream);
+    border-bottom: 2px solid rgba(26,18,9,0.08);
+  }
+
+  .step-tab {
+    flex: 1; padding: 12px 8px; text-align: center;
+    font-family: 'DM Mono', monospace; font-size: 0.68rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); cursor: pointer; transition: all 0.2s;
+    border-bottom: 3px solid transparent; margin-bottom: -2px;
+    position: relative;
+  }
+
+  .step-tab.active { color: var(--rust); border-bottom-color: var(--rust); }
+  .step-tab.done { color: var(--sage); }
+
+  .step-num {
+    display: block; font-size: 1.1rem; margin-bottom: 2px;
+    font-family: 'Playfair Display', serif;
+  }
+
+  /* ── Sections ── */
+  .section { display: none; padding: 24px 20px; }
+  .section.active { display: block; }
+
+  /* ── Cards ── */
+  .card {
+    background: white; border-radius: var(--radius);
+    padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 2px 12px var(--shadow);
+    border: 1px solid rgba(26,18,9,0.06);
+  }
+
+  .card-label {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+
+  /* ── Input ── */
+  input[type="text"], textarea {
+    width: 100%; padding: 12px 14px;
+    font-family: 'Noto Serif KR', serif; font-size: 1rem;
+    border: 2px solid var(--cream); border-radius: 8px;
+    background: var(--paper); color: var(--ink);
+    outline: none; transition: border-color 0.2s;
+  }
+
+  input[type="text"]:focus, textarea:focus { border-color: var(--gold); }
+
+  /* ── Buttons ── */
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 14px 20px; border: none; border-radius: 10px;
+    font-family: 'Noto Serif KR', serif; font-size: 0.95rem; font-weight: 600;
+    cursor: pointer; transition: all 0.18s; letter-spacing: 0.02em;
+  }
+
+  .btn-primary { background: var(--rust); color: white; }
+  .btn-primary:active { background: #8f3614; transform: scale(0.98); }
+
+  .btn-secondary { background: var(--ink); color: var(--paper); }
+  .btn-secondary:active { opacity: 0.8; transform: scale(0.98); }
+
+  .btn-outline {
+    background: transparent; color: var(--ink);
+    border: 2px solid var(--cream);
+  }
+  .btn-outline:active { background: var(--cream); }
+
+  .btn-green { background: var(--sage); color: white; }
+  .btn-green:active { opacity: 0.85; }
+
+  .btn-gold { background: var(--gold); color: white; }
+  .btn-gold:active { opacity: 0.85; }
+
+  .btn:disabled { opacity: 0.4; pointer-events: none; }
+
+  /* ── Camera area ── */
+  .camera-container {
+    position: relative; background: var(--ink);
+    border-radius: var(--radius); overflow: hidden;
+    aspect-ratio: 3/4; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  #videoEl {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+
+  .camera-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    border: 2px dashed rgba(201,151,58,0.5);
+    margin: 16px; border-radius: 6px;
+  }
+
+  .camera-hint {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(26,18,9,0.75); color: var(--gold);
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.1em; padding: 5px 12px; border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .page-counter {
+    position: absolute; top: 12px; right: 12px;
+    background: var(--rust); color: white;
+    font-family: 'DM Mono', monospace; font-size: 0.8rem;
+    padding: 5px 10px; border-radius: 20px; font-weight: 400;
+  }
+
+  #canvasEl { display: none; }
+
+  /* ── Shutter button ── */
+  .shutter-wrap {
+    display: flex; align-items: center; justify-content: center;
+    gap: 16px; margin-top: 16px;
+  }
+
+  .shutter-btn {
+    width: 70px; height: 70px; border-radius: 50%;
+    background: white; border: 4px solid var(--rust);
+    cursor: pointer; position: relative; transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .shutter-btn::after {
+    content: ''; position: absolute;
+    inset: 6px; border-radius: 50%; background: var(--rust);
+    transition: all 0.15s;
+  }
+
+  .shutter-btn:active { transform: scale(0.92); }
+  .shutter-btn:active::after { background: #8f3614; }
+
+  .shutter-btn.processing::after { background: var(--gold); animation: pulse 0.5s infinite; }
+
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+  /* ── Page list ── */
+  .pages-scroll {
+    display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .pages-scroll::-webkit-scrollbar { height: 4px; }
+  .pages-scroll::-webkit-scrollbar-track { background: var(--cream); }
+  .pages-scroll::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+
+  .page-thumb {
+    flex-shrink: 0; width: 90px; scroll-snap-align: start;
+    position: relative; cursor: pointer;
+  }
+
+  .page-thumb img {
+    width: 90px; height: 120px; object-fit: cover;
+    border-radius: 6px; border: 2px solid var(--cream);
+    transition: border-color 0.2s;
+  }
+
+  .page-thumb.selected img { border-color: var(--rust); }
+
+  .page-thumb-num {
+    position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+    background: rgba(26,18,9,0.7); color: white;
+    font-family: 'DM Mono', monospace; font-size: 0.6rem;
+    padding: 2px 6px; border-radius: 3px;
+  }
+
+  .page-thumb-delete {
+    position: absolute; top: -5px; right: -5px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--rust); color: white; border: none;
+    font-size: 0.7rem; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    box-shadow: 0 1px 4px var(--shadow);
+  }
+
+  /* ── Status bar ── */
+  .status-bar {
+    background: var(--cream); border-radius: 8px;
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--sage); flex-shrink: 0;
+    animation: blink 1.5s infinite;
+  }
+
+  .status-dot.idle { background: var(--muted); animation: none; }
+  .status-dot.error { background: var(--rust); animation: none; }
+
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  /* ── Translation panel ── */
+  .translation-pair {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .text-panel {
+    border-radius: 8px; padding: 12px;
+    font-size: 0.82rem; line-height: 1.7;
+    min-height: 120px; max-height: 200px; overflow-y: auto;
+  }
+
+  .text-panel.original { background: var(--ink); color: var(--cream); }
+  .text-panel.translated { background: #eef4ee; color: var(--ink); }
+
+  .text-panel-label {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 6px; opacity: 0.6;
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+    background-size: 200% 100%; animation: shimmer 1.2s infinite;
+  }
+
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .translating-overlay {
+    min-height: 80px; border-radius: 8px; background: var(--cream);
+  }
+
+  /* ── Progress ── */
+  .progress-bar {
+    height: 6px; background: var(--cream); border-radius: 3px; overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--rust), var(--gold));
+    border-radius: 3px; transition: width 0.4s ease;
+  }
+
+  /* ── Summary ── */
+  .summary-stat {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--cream);
+  }
+
+  .summary-stat:last-child { border-bottom: none; }
+
+  .summary-stat-key {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase;
+  }
+
+  .summary-stat-val {
+    font-family: 'Playfair Display', serif; font-size: 1.1rem; font-weight: 700;
+  }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--ink); color: var(--paper);
+    padding: 10px 20px; border-radius: 30px;
+    font-family: 'DM Mono', monospace; font-size: 0.75rem; letter-spacing: 0.05em;
+    z-index: 1000; transition: transform 0.3s ease; white-space: nowrap;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { background: var(--sage); }
+  .toast.error { background: var(--rust); }
+
+  /* ── File upload zone ── */
+  .upload-zone {
+    border: 2px dashed var(--muted); border-radius: var(--radius);
+    padding: 24px; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: var(--paper);
+  }
+
+  .upload-zone:active, .upload-zone.drag-over {
+    border-color: var(--gold); background: rgba(201,151,58,0.05);
+  }
+
+  .upload-icon { font-size: 2rem; margin-bottom: 8px; }
+
+  .upload-text {
+    font-family: 'DM Mono', monospace; font-size: 0.75rem;
+    color: var(--muted); letter-spacing: 0.05em;
+  }
+
+  /* ── API key modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(26,18,9,0.8); display: flex;
+    align-items: flex-end; justify-content: center;
+    padding: 0; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--paper); border-radius: 20px 20px 0 0;
+    padding: 28px 24px 36px; width: 100%; max-width: 480px;
+    transform: translateY(100%); transition: transform 0.35s cubic-bezier(.2,.8,.3,1);
+  }
+
+  .modal-overlay.open .modal { transform: translateY(0); }
+
+  .modal-handle {
+    width: 40px; height: 4px; background: var(--muted);
+    border-radius: 2px; margin: 0 auto 20px;
+  }
+
+  .modal-title {
+    font-family: 'Playfair Display', serif; font-size: 1.3rem;
+    margin-bottom: 6px;
+  }
+
+  .modal-sub {
+    font-size: 0.8rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5;
+  }
+
+  .api-link {
+    color: var(--rust); text-decoration: none; font-weight: 600;
+  }
+
+  /* ── Section header ── */
+  .section-title {
+    font-family: 'Playfair Display', serif; font-size: 1.4rem;
+    font-weight: 700; margin-bottom: 4px;
+  }
+
+  .section-sub {
+    font-size: 0.78rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5;
+  }
+
+  /* ── Responsive ── */
+  @media (min-width: 480px) {
+    .section { max-width: 480px; margin: 0 auto; }
+    .header { justify-content: center; gap: 20px; }
+  }
+
+  /* ── PDF export progress ── */
+  .export-log {
+    background: var(--ink); color: var(--cream);
+    border-radius: 8px; padding: 14px 16px;
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    line-height: 1.8; max-height: 160px; overflow-y: auto;
+    margin-top: 12px;
+  }
+
+  .log-line { opacity: 0; animation: fadeIn 0.3s forwards; }
+  .log-line.ok { color: #8bc99e; }
+  .log-line.warn { color: var(--gold); }
+
+  @keyframes fadeIn { to { opacity: 1; } }
+
+  .divider {
+    height: 1px; background: var(--cream); margin: 16px 0;
+  }
+
+  input[type="file"] { display: none; }
+
+  #uploadInput, #galleryInput { display: none; }
+
+  .select-wrap { position: relative; }
+
+  select {
+    width: 100%; padding: 12px 14px;
+    font-family: 'Noto Serif KR', serif; font-size: 0.9rem;
+    border: 2px solid var(--cream); border-radius: 8px;
+    background: var(--paper); color: var(--ink);
+    outline: none; appearance: none;
+  }
+
+  .select-arrow {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    pointer-events: none; color: var(--muted); font-size: 0.8rem;
+  }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.05em;
+  }
+
+  .badge-ok { background: #d4edda; color: #2d7a4f; }
+  .badge-wait { background: #fff3cd; color: #856404; }
+
+  /* ── Scan mode buttons ── */
+  .scan-mode-toggle {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;
+  }
+
+  .scan-mode-btn {
+    padding: 10px; text-align: center; border-radius: 8px;
+    border: 2px solid var(--cream); cursor: pointer;
+    font-family: 'DM Mono', monospace; font-size: 0.68rem;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); transition: all 0.2s;
+  }
+
+  .scan-mode-btn.active {
+    border-color: var(--rust); color: var(--rust);
+    background: rgba(181,69,27,0.05);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div>
+      <div class="header-title">Book<span>Scan</span> KR</div>
+      <div class="header-badge">영문 소설 → 한국어 번역기</div>
+    </div>
+    <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:0.75rem;font-family:'DM Mono',monospace;" onclick="openApiModal()">
+      🔑 API 설정
+    </button>
+  </header>
+
+  <!-- Steps nav -->
+  <nav class="steps-nav">
+    <div class="step-tab active" id="tab-0" onclick="goTab(0)">
+      <span class="step-num">①</span>설정
+    </div>
+    <div class="step-tab" id="tab-1" onclick="goTab(1)">
+      <span class="step-num">②</span>스캔
+    </div>
+    <div class="step-tab" id="tab-2" onclick="goTab(2)">
+      <span class="step-num">③</span>번역
+    </div>
+    <div class="step-tab" id="tab-3" onclick="goTab(3)">
+      <span class="step-num">④</span>내보내기
+    </div>
+  </nav>
+
+  <!-- ① 설정 -->
+  <section class="section active" id="section-0">
+    <div class="section-title">책 정보 입력</div>
+    <div class="section-sub">번역할 영문 소설의 기본 정보를 입력하세요.</div>
+
+    <div class="card">
+      <div class="card-label">📚 책 제목 (영문)</div>
+      <input type="text" id="bookTitleEn" placeholder="예: Pride and Prejudice" />
+    </div>
+
+    <div class="card">
+      <div class="card-label">🇰🇷 책 제목 (한국어, 선택)</div>
+      <input type="text" id="bookTitleKr" placeholder="예: 오만과 편견" />
+    </div>
+
+    <div class="card">
+      <div class="card-label">✍️ 저자</div>
+      <input type="text" id="bookAuthor" placeholder="예: Jane Austen" />
+    </div>
+
+    <div class="card">
+      <div class="card-label">📖 번역 스타일</div>
+      <div class="select-wrap">
+        <select id="transStyle">
+          <option value="literary">문학적 (Literary) — 원문의 감성 살리기</option>
+          <option value="natural">자연스러운 한국어 — 읽기 편한 번역</option>
+          <option value="literal">직역 (Literal) — 원문에 충실한 번역</option>
+        </select>
+        <span class="select-arrow">▼</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">📄 스캔 시작 페이지 번호</div>
+      <input type="text" id="startPage" placeholder="예: 1" value="1" inputmode="numeric" />
+    </div>
+
+    <div style="height:16px;"></div>
+    <button class="btn btn-primary" onclick="goTab(1)">
+      📷 스캔 시작하기 →
+    </button>
+  </section>
+
+  <!-- ② 스캔 -->
+  <section class="section" id="section-1">
+    <div class="section-title">페이지 스캔</div>
+    <div class="section-sub">카메라로 책 페이지를 촬영하거나 갤러리에서 가져오세요. 300페이지 이상 연속 촬영 가능합니다.</div>
+
+    <!-- 스캔 모드 선택 -->
+    <div class="scan-mode-toggle">
+      <div class="scan-mode-btn active" id="mode-camera" onclick="setScanMode('camera')">📷 카메라</div>
+      <div class="scan-mode-btn" id="mode-gallery" onclick="setScanMode('gallery')">🖼️ 갤러리</div>
+    </div>
+
+    <!-- 카메라 뷰 -->
+    <div id="cameraSection">
+      <div class="camera-container">
+        <video id="videoEl" autoplay playsinline muted></video>
+        <canvas id="canvasEl"></canvas>
+        <div class="camera-overlay"></div>
+        <div class="camera-hint">책 페이지를 프레임 안에 맞추세요</div>
+        <div class="page-counter" id="pageCounter">0 페이지</div>
+      </div>
+
+      <div class="shutter-wrap">
+        <button class="btn btn-outline" style="width:auto;padding:12px 18px;" onclick="switchCamera()">🔄</button>
+        <button class="shutter-btn" id="shutterBtn" onclick="capturePhoto()"></button>
+        <button class="btn btn-outline" style="width:auto;padding:12px 18px;" onclick="stopCamera()">⏹️</button>
+      </div>
+    </div>
+
+    <!-- 갤러리 업로드 -->
+    <div id="gallerySection" style="display:none;">
+      <div class="upload-zone" onclick="document.getElementById('galleryInput').click()">
+        <div class="upload-icon">📂</div>
+        <div class="upload-text">탭하여 이미지 선택 (여러 장 동시 선택 가능)</div>
+      </div>
+      <input type="file" id="galleryInput" accept="image/*" multiple onchange="addGalleryImages(event)">
+    </div>
+
+    <div style="height:16px;"></div>
+
+    <!-- Status -->
+    <div class="status-bar">
+      <div class="status-dot idle" id="statusDot"></div>
+      <span id="statusText">카메라를 시작하거나 갤러리에서 이미지를 가져오세요</span>
+    </div>
+
+    <div style="height:16px;"></div>
+
+    <!-- 촬영된 페이지들 -->
+    <div class="card" id="pagesCard" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="card-label" style="margin:0;">촬영된 페이지들</div>
+        <span class="badge badge-ok" id="pageBadge">0장</span>
+      </div>
+      <div class="pages-scroll" id="pagesScroll"></div>
+    </div>
+
+    <div style="height:16px;"></div>
+
+    <button class="btn btn-primary" id="goTranslateBtn" onclick="startTranslation()" style="display:none;">
+      🌐 번역 시작하기 →
+    </button>
+  </section>
+
+  <!-- ③ 번역 -->
+  <section class="section" id="section-2">
+    <div class="section-title">번역 진행</div>
+    <div class="section-sub">AI가 각 페이지의 텍스트를 추출하고 한국어로 번역합니다.</div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="card-label" style="margin:0;">전체 진행률</div>
+        <span id="progressText" style="font-family:'DM Mono',monospace;font-size:0.75rem;color:var(--muted);">0 / 0</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="card" id="currentPageCard" style="display:none;">
+      <div class="card-label" id="currentPageLabel">페이지 번역 중…</div>
+      <div class="translation-pair">
+        <div class="text-panel original">
+          <div class="text-panel-label">원문 (영문)</div>
+          <div id="originalText">—</div>
+        </div>
+        <div class="text-panel translated">
+          <div class="text-panel-label">번역 (한국어)</div>
+          <div id="translatedText">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-dot idle" id="transStatusDot"></div>
+      <span id="transStatusText">번역 대기 중</span>
+    </div>
+
+    <div style="height:16px;"></div>
+
+    <button class="btn btn-secondary" id="pauseBtn" onclick="togglePause()" style="display:none;">
+      ⏸️ 일시 정지
+    </button>
+
+    <div style="height:8px;"></div>
+
+    <button class="btn btn-primary" id="goExportBtn" onclick="goTab(3)" style="display:none;">
+      📄 PDF 내보내기 →
+    </button>
+  </section>
+
+  <!-- ④ 내보내기 -->
+  <section class="section" id="section-3">
+    <div class="section-title">PDF 내보내기</div>
+    <div class="section-sub">번역된 내용을 PDF 파일로 저장합니다.</div>
+
+    <div class="card">
+      <div class="summary-stat">
+        <span class="summary-stat-key">책 제목</span>
+        <span class="summary-stat-val" id="summaryTitle">—</span>
+      </div>
+      <div class="summary-stat">
+        <span class="summary-stat-key">저자</span>
+        <span class="summary-stat-val" id="summaryAuthor">—</span>
+      </div>
+      <div class="summary-stat">
+        <span class="summary-stat-key">총 페이지</span>
+        <span class="summary-stat-val" id="summaryPages">0페이지</span>
+      </div>
+      <div class="summary-stat">
+        <span class="summary-stat-key">번역 완료</span>
+        <span class="summary-stat-val" id="summaryDone">0페이지</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">📐 PDF 레이아웃</div>
+      <div class="select-wrap" style="margin-bottom:12px;">
+        <select id="pdfLayout">
+          <option value="ko-only">한국어 번역만</option>
+          <option value="bilingual">원문 + 번역 (2단)</option>
+          <option value="facing">원문 / 번역 마주보기</option>
+        </select>
+        <span class="select-arrow">▼</span>
+      </div>
+
+      <div class="card-label">🔤 폰트 크기</div>
+      <div class="select-wrap">
+        <select id="pdfFontSize">
+          <option value="10">작게 (10pt)</option>
+          <option value="12" selected>보통 (12pt)</option>
+          <option value="14">크게 (14pt)</option>
+          <option value="16">매우 크게 (16pt)</option>
+        </select>
+        <span class="select-arrow">▼</span>
+      </div>
+    </div>
+
+    <div class="card" id="exportLogCard" style="display:none;">
+      <div class="card-label">⚙️ 내보내기 로그</div>
+      <div class="export-log" id="exportLog"></div>
+    </div>
+
+    <div style="height:16px;"></div>
+
+    <button class="btn btn-primary" id="exportBtn" onclick="exportPDF()">
+      📥 PDF 다운로드
+    </button>
+
+    <div style="height:8px;"></div>
+
+    <button class="btn btn-outline" onclick="resetAll()">
+      🔄 새 책 번역하기
+    </button>
+  </section>
+
+</div><!-- #app -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- API Modal -->
+<div class="modal-overlay" id="apiModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Anthropic API 키 설정</div>
+    <div class="modal-sub">
+      텍스트 추출 및 번역을 위해 Anthropic API 키가 필요합니다.<br>
+      <a href="https://console.anthropic.com" class="api-link" target="_blank">console.anthropic.com</a>에서 발급받으세요.
+      키는 이 기기에만 저장되며 외부로 전송되지 않습니다.
+    </div>
+    <div class="card-label">API KEY</div>
+    <input type="text" id="apiKeyInput" placeholder="sk-ant-api03-..." style="margin-bottom:16px;font-family:'DM Mono',monospace;font-size:0.8rem;" />
+    <button class="btn btn-primary" onclick="saveApiKey()">저장하기</button>
+    <div style="height:8px;"></div>
+    <button class="btn btn-outline" onclick="closeApiModal()">취소</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let apiKey = localStorage.getItem('bsApiKey') || '';
+let pages = [];          // { id, imageDataUrl, pageNum, original:'', translated:'' }
+let scanMode = 'camera';
+let stream = null;
+let facingMode = 'environment';
+let translating = false;
+let paused = false;
+let translationIndex = 0;
+let startPageNum = 1;
+
+// ============================================================
+// TABS
+// ============================================================
+function goTab(i) {
+  document.querySelectorAll('.section').forEach((s,j) => {
+    s.classList.toggle('active', j===i);
+  });
+  document.querySelectorAll('.step-tab').forEach((t,j) => {
+    t.classList.toggle('active', j===i);
+    if(j<i) t.classList.add('done'); else t.classList.remove('done');
+  });
+  if(i===1 && scanMode==='camera' && !stream) startCamera();
+  if(i===3) updateSummary();
+}
+
+// ============================================================
+// API KEY
+// ============================================================
+function openApiModal() {
+  document.getElementById('apiKeyInput').value = apiKey;
+  document.getElementById('apiModal').classList.add('open');
+}
+function closeApiModal() {
+  document.getElementById('apiModal').classList.remove('open');
+}
+function saveApiKey() {
+  const v = document.getElementById('apiKeyInput').value.trim();
+  if(!v.startsWith('sk-ant')) { toast('유효한 API 키를 입력하세요','error'); return; }
+  apiKey = v;
+  localStorage.setItem('bsApiKey', v);
+  closeApiModal();
+  toast('API 키가 저장되었습니다 ✓','success');
+}
+
+// ============================================================
+// CAMERA
+// ============================================================
+async function startCamera() {
+  try {
+    if(stream) { stream.getTracks().forEach(t=>t.stop()); }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode, width:{ideal:1920}, height:{ideal:2560} },
+      audio: false
+    });
+    document.getElementById('videoEl').srcObject = stream;
+    setStatus('idle','카메라 준비 완료');
+  } catch(e) {
+    setStatus('error','카메라 접근 실패: '+e.message);
+    toast('카메라를 사용할 수 없습니다','error');
+  }
+}
+
+function stopCamera() {
+  if(stream) { stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  setStatus('idle','카메라 중지됨');
+}
+
+function switchCamera() {
+  facingMode = facingMode==='environment'?'user':'environment';
+  startCamera();
+}
+
+async function capturePhoto() {
+  const btn = document.getElementById('shutterBtn');
+  if(!stream) { toast('카메라를 먼저 시작하세요','error'); return; }
+  btn.classList.add('processing');
+
+  const video = document.getElementById('videoEl');
+  const canvas = document.getElementById('canvasEl');
+  canvas.width = video.videoWidth || 1080;
+  canvas.height = video.videoHeight || 1440;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  // auto-enhance: slight contrast boost
+  const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+  autoEnhance(imageData);
+  ctx.putImageData(imageData,0,0);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  addPage(dataUrl);
+
+  // haptic feedback
+  if(navigator.vibrate) navigator.vibrate(40);
+  btn.classList.remove('processing');
+}
+
+function autoEnhance(imageData) {
+  const d = imageData.data;
+  for(let i=0;i<d.length;i+=4) {
+    d[i]   = Math.min(255, Math.max(0, (d[i]   - 128) * 1.1 + 138));
+    d[i+1] = Math.min(255, Math.max(0, (d[i+1] - 128) * 1.1 + 138));
+    d[i+2] = Math.min(255, Math.max(0, (d[i+2] - 128) * 1.1 + 138));
+  }
+}
+
+// ============================================================
+// GALLERY
+// ============================================================
+function setScanMode(mode) {
+  scanMode = mode;
+  document.getElementById('mode-camera').classList.toggle('active', mode==='camera');
+  document.getElementById('mode-gallery').classList.toggle('active', mode==='gallery');
+  document.getElementById('cameraSection').style.display = mode==='camera'?'block':'none';
+  document.getElementById('gallerySection').style.display = mode==='gallery'?'block':'none';
+  if(mode==='camera' && !stream) startCamera();
+  if(mode==='gallery' && stream) stopCamera();
+}
+
+function addGalleryImages(e) {
+  const files = Array.from(e.target.files);
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      addPage(ev.target.result);
+      loaded++;
+      if(loaded===files.length) toast(`${files.length}장 추가됨 ✓`,'success');
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value='';
+}
+
+// ============================================================
+// PAGE MANAGEMENT
+// ============================================================
+function addPage(dataUrl) {
+  const spn = parseInt(document.getElementById('startPage').value)||1;
+  const pageNum = spn + pages.length;
+  const id = Date.now() + '_' + pages.length;
+  pages.push({ id, imageDataUrl:dataUrl, pageNum, original:'', translated:'', status:'pending' });
+  renderPageThumbs();
+  setStatus('active', `${pages.length}페이지 촬영됨`);
+  document.getElementById('pageCounter').textContent = pages.length + ' 페이지';
+}
+
+function removePage(id) {
+  pages = pages.filter(p=>p.id!==id);
+  // renumber
+  const spn = parseInt(document.getElementById('startPage').value)||1;
+  pages.forEach((p,i)=>{ p.pageNum = spn+i; });
+  renderPageThumbs();
+}
+
+function renderPageThumbs() {
+  const card = document.getElementById('pagesCard');
+  const scroll = document.getElementById('pagesScroll');
+  const badge = document.getElementById('pageBadge');
+  const btn = document.getElementById('goTranslateBtn');
+
+  if(pages.length===0) { card.style.display='none'; btn.style.display='none'; return; }
+  card.style.display='block';
+  btn.style.display='flex';
+  badge.textContent = pages.length+'장';
+
+  scroll.innerHTML = pages.map(p=>`
+    <div class="page-thumb" id="thumb_${p.id}">
+      <img src="${p.imageDataUrl}" loading="lazy">
+      <div class="page-thumb-num">p.${p.pageNum}</div>
+      <button class="page-thumb-delete" onclick="removePage('${p.id}')">✕</button>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// TRANSLATION
+// ============================================================
+async function startTranslation() {
+  if(!apiKey) { openApiModal(); return; }
+  if(pages.length===0) { toast('스캔된 페이지가 없습니다','error'); return; }
+  if(translating) return;
+
+  goTab(2);
+  translating = true;
+  paused = false;
+  translationIndex = 0;
+
+  document.getElementById('pauseBtn').style.display='flex';
+  document.getElementById('goExportBtn').style.display='none';
+  document.getElementById('currentPageCard').style.display='block';
+
+  await runTranslationLoop();
+}
+
+async function runTranslationLoop() {
+  const total = pages.length;
+  const style = document.getElementById('transStyle').value;
+  const stylePrompts = {
+    literary: '문학적이고 시적인 한국어로, 원문의 분위기와 감성을 충실히 살려서',
+    natural: '자연스럽고 읽기 편한 현대 한국어로',
+    literal: '원문에 최대한 충실하게 직역하여'
+  };
+
+  while(translationIndex < total) {
+    if(paused) {
+      await new Promise(r=>setTimeout(r,500));
+      continue;
+    }
+
+    const page = pages[translationIndex];
+    if(page.status==='done') { translationIndex++; updateProgress(); continue; }
+
+    // Update UI
+    setTransStatus('active', `페이지 ${page.pageNum} 처리 중…`);
+    document.getElementById('currentPageLabel').textContent = `페이지 ${page.pageNum} 번역 중…`;
+    document.getElementById('originalText').textContent = '텍스트 추출 중…';
+    document.getElementById('translatedText').innerHTML = '<div class="translating-overlay shimmer"></div>';
+    updateProgress();
+
+    try {
+      // Step 1: OCR — extract text from image
+      const extracted = await callClaudeVision(page.imageDataUrl,
+        `Please extract all the English text from this book page image. 
+         Return ONLY the raw text content, preserving paragraph breaks with double newlines. 
+         Do not add any commentary, headers, or formatting. 
+         If the image is unclear, do your best to transcribe what you can see.`
+      );
+      page.original = extracted;
+      document.getElementById('originalText').textContent = extracted.slice(0,300)+(extracted.length>300?'…':'');
+
+      // Step 2: Translate
+      const bookTitle = document.getElementById('bookTitleEn').value || '소설';
+      const author = document.getElementById('bookAuthor').value || '';
+      const translated = await callClaude(
+        `당신은 전문 문학 번역가입니다. 
+         다음은 "${bookTitle}"${author?` (${author})`:''}의 영문 원본 텍스트입니다. 
+         이것을 ${stylePrompts[style]} 번역해주세요.
+         번역문만 출력하고 다른 설명은 하지 마세요.
+         
+         원문:
+         ${page.original}`
+      );
+      page.translated = translated;
+      page.status = 'done';
+
+      document.getElementById('translatedText').textContent = translated.slice(0,300)+(translated.length>300?'…':'');
+      toast(`p.${page.pageNum} 번역 완료`,'success');
+
+    } catch(e) {
+      page.status = 'error';
+      page.original = page.original || '텍스트 추출 실패';
+      page.translated = '번역 오류: ' + e.message;
+      toast(`p.${page.pageNum} 오류`,'error');
+    }
+
+    translationIndex++;
+    updateProgress();
+    await new Promise(r=>setTimeout(r,300)); // brief pause between pages
+  }
+
+  translating = false;
+  setTransStatus('idle', `번역 완료! ${total}페이지`);
+  document.getElementById('pauseBtn').style.display='none';
+  document.getElementById('goExportBtn').style.display='flex';
+  toast('모든 페이지 번역 완료! 🎉','success');
+}
+
+function updateProgress() {
+  const total = pages.length;
+  const done = pages.filter(p=>p.status==='done').length;
+  document.getElementById('progressText').textContent = `${done} / ${total}`;
+  document.getElementById('progressFill').style.width = total>0?(done/total*100)+'%':'0%';
+}
+
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('pauseBtn');
+  btn.textContent = paused ? '▶️ 계속하기' : '⏸️ 일시 정지';
+  setTransStatus(paused?'idle':'active', paused?'일시 정지됨':'번역 재개 중…');
+}
+
+// ============================================================
+// CLAUDE API CALLS
+// ============================================================
+async function callClaudeVision(imageDataUrl, prompt) {
+  const base64 = imageDataUrl.split(',')[1];
+  const mimeType = imageDataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 4000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type:'image', source:{ type:'base64', media_type:mimeType, data:base64 } },
+          { type:'text', text:prompt }
+        ]
+      }]
+    })
+  });
+
+  if(!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || `API Error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.content.map(c=>c.text||'').join('');
+}
+
+async function callClaude(prompt) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [{ role:'user', content: prompt }]
+    })
+  });
+
+  if(!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || `API Error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.content.map(c=>c.text||'').join('');
+}
+
+// ============================================================
+// PDF EXPORT
+// ============================================================
+function updateSummary() {
+  const kr = document.getElementById('bookTitleKr').value;
+  const en = document.getElementById('bookTitleEn').value;
+  document.getElementById('summaryTitle').textContent = kr || en || '제목 없음';
+  document.getElementById('summaryAuthor').textContent = document.getElementById('bookAuthor').value || '—';
+  document.getElementById('summaryPages').textContent = pages.length + '페이지';
+  document.getElementById('summaryDone').textContent = pages.filter(p=>p.status==='done').length + '페이지';
+}
+
+async function exportPDF() {
+  const donepages = pages.filter(p=>p.status==='done');
+  if(donepages.length===0) { toast('번역된 페이지가 없습니다','error'); return; }
+
+  const layout = document.getElementById('pdfLayout').value;
+  const fontSize = parseInt(document.getElementById('pdfFontSize').value);
+  const bookTitleKr = document.getElementById('bookTitleKr').value;
+  const bookTitleEn = document.getElementById('bookTitleEn').value;
+  const author = document.getElementById('bookAuthor').value;
+  const displayTitle = bookTitleKr || bookTitleEn || '번역된 소설';
+
+  document.getElementById('exportLogCard').style.display='block';
+  document.getElementById('exportBtn').disabled=true;
+  const log = document.getElementById('exportLog');
+  log.innerHTML='';
+
+  function addLog(msg, cls='') {
+    const line = document.createElement('div');
+    line.className = 'log-line ' + cls;
+    line.textContent = '> ' + msg;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  addLog('PDF 생성 시작...');
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a5' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    const contentW = pageW - margin*2;
+
+    // Cover page
+    addLog('표지 생성 중...');
+    doc.setFillColor(26,18,9);
+    doc.rect(0,0,pageW,pageH,'F');
+    doc.setTextColor(201,151,58);
+    doc.setFontSize(18);
+    doc.setFont('helvetica','bold');
+
+    // Title (split if long)
+    const titleLines = doc.splitTextToSize(displayTitle, contentW-4);
+    let ty = pageH/2 - 20;
+    titleLines.forEach(line=>{
+      doc.text(line, pageW/2, ty, {align:'center'});
+      ty += 9;
+    });
+
+    if(bookTitleEn && bookTitleKr) {
+      doc.setTextColor(197,181,159);
+      doc.setFontSize(11);
+      doc.setFont('helvetica','italic');
+      doc.text(bookTitleEn, pageW/2, ty+4, {align:'center'});
+      ty += 12;
+    }
+
+    if(author) {
+      doc.setTextColor(138,126,110);
+      doc.setFontSize(10);
+      doc.setFont('helvetica','normal');
+      doc.text(author, pageW/2, ty+8, {align:'center'});
+    }
+
+    doc.setTextColor(90,117,96);
+    doc.setFontSize(8);
+    doc.text('한국어 번역본 · BookScan KR', pageW/2, pageH-12, {align:'center'});
+
+    addLog('표지 완료', 'ok');
+
+    // Content pages
+    for(let i=0; i<donepages.length; i++) {
+      const p = donepages[i];
+      doc.addPage();
+
+      // Header rule
+      doc.setDrawColor(201,151,58);
+      doc.setLineWidth(0.4);
+      doc.line(margin, 10, pageW-margin, 10);
+
+      // Page num
+      doc.setTextColor(138,126,110);
+      doc.setFontSize(7);
+      doc.setFont('helvetica','normal');
+      doc.text(`p. ${p.pageNum}`, margin, 8);
+      doc.text(displayTitle, pageW-margin, 8, {align:'right'});
+
+      const contentTop = 14;
+
+      if(layout==='ko-only') {
+        doc.setTextColor(26,18,9);
+        doc.setFontSize(fontSize);
+        doc.setFont('helvetica','normal');
+        const lines = doc.splitTextToSize(p.translated || '번역 없음', contentW);
+        doc.text(lines, margin, contentTop);
+
+      } else if(layout==='bilingual') {
+        const colW = (contentW - 4) / 2;
+        // Left: original
+        doc.setTextColor(60,50,40);
+        doc.setFontSize(Math.max(7, fontSize-3));
+        doc.setFont('helvetica','italic');
+        const origLines = doc.splitTextToSize(p.original||'', colW);
+        doc.text(origLines, margin, contentTop);
+        // Divider
+        doc.setDrawColor(200,190,175);
+        doc.setLineWidth(0.2);
+        doc.line(pageW/2, contentTop, pageW/2, pageH-margin);
+        // Right: translated
+        doc.setTextColor(26,18,9);
+        doc.setFontSize(fontSize);
+        doc.setFont('helvetica','normal');
+        const transLines = doc.splitTextToSize(p.translated||'', colW);
+        doc.text(transLines, pageW/2+4, contentTop);
+
+      } else { // facing
+        // alternate: even=original, odd=translated
+        if(i%2===0) {
+          doc.setTextColor(60,50,40);
+          doc.setFontSize(fontSize);
+          doc.setFont('helvetica','italic');
+          const lines = doc.splitTextToSize(p.original||'', contentW);
+          doc.text(lines, margin, contentTop);
+          doc.setTextColor(138,126,110);
+          doc.setFontSize(7);
+          doc.text('원문', pageW/2, pageH-10, {align:'center'});
+        } else {
+          doc.setTextColor(26,18,9);
+          doc.setFontSize(fontSize);
+          doc.setFont('helvetica','normal');
+          const lines = doc.splitTextToSize(p.translated||'', contentW);
+          doc.text(lines, margin, contentTop);
+          doc.setTextColor(90,117,96);
+          doc.setFontSize(7);
+          doc.text('번역', pageW/2, pageH-10, {align:'center'});
+        }
+      }
+
+      // Footer rule
+      doc.setDrawColor(201,151,58);
+      doc.setLineWidth(0.2);
+      doc.line(margin, pageH-8, pageW-margin, pageH-8);
+
+      if((i+1) % 10 === 0) addLog(`${i+1}페이지 처리 완료`, 'ok');
+    }
+
+    addLog(`총 ${donepages.length}페이지 완료`, 'ok');
+    addLog('파일 저장 중...');
+
+    const filename = `${displayTitle.replace(/[^가-힣a-zA-Z0-9\s]/g,'').trim()}_한국어번역.pdf`;
+    doc.save(filename);
+    addLog('✓ 다운로드 완료!', 'ok');
+    toast('PDF 다운로드 완료! 📥','success');
+
+  } catch(e) {
+    addLog('오류: '+e.message, 'warn');
+    toast('PDF 생성 실패','error');
+  }
+
+  document.getElementById('exportBtn').disabled=false;
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function setStatus(type, msg) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot ' + (type==='active'?'':'idle');
+  if(type==='error') dot.classList.add('error');
+  txt.textContent = msg;
+}
+
+function setTransStatus(type, msg) {
+  const dot = document.getElementById('transStatusDot');
+  const txt = document.getElementById('transStatusText');
+  dot.className = 'status-dot ' + (type==='active'?'':'idle');
+  txt.textContent = msg;
+}
+
+let toastTimer;
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ el.classList.remove('show'); }, 2500);
+}
+
+function resetAll() {
+  if(!confirm('모든 스캔 데이터와 번역을 초기화하시겠습니까?')) return;
+  pages = [];
+  translating = false;
+  paused = false;
+  translationIndex = 0;
+  renderPageThumbs();
+  document.getElementById('pageCounter').textContent = '0 페이지';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressText').textContent = '0 / 0';
+  document.getElementById('goExportBtn').style.display='none';
+  document.getElementById('exportLogCard').style.display='none';
+  goTab(0);
+  toast('초기화 완료','success');
+}
+
+// Init
+if(apiKey) {
+  // API key already set
+} else {
+  setTimeout(openApiModal, 800);
+}
+</script>
+</body>
+</html>
